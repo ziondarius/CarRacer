@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Car Racer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="hud">
+        <h1>Car Racer</h1>
+        <div class="stats">
+          <p>Score: <span id="score">0</span></p>
+          <p>Best: <span id="best">0</span></p>
+          <p>Speed: <span id="speed">1.0x</span></p>
+        </div>
+      </header>
+
+      <section class="game-shell">
+        <canvas id="game" width="420" height="720" aria-label="Car racing game"></canvas>
+        <div id="overlay" class="overlay">
+          <h2 id="overlay-title">Press Start</h2>
+          <p id="overlay-text">
+            Move with Arrow Keys or A/D.
+            <br />
+            Avoid traffic and survive as long as possible.
+          </p>
+          <button id="start-btn" type="button">Start Game</button>
+        </div>
+      </section>
+
+      <section class="touch-controls" aria-label="Touch controls">
+        <button id="left-btn" type="button">Left</button>
+        <button id="right-btn" type="button">Right</button>
+      </section>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
