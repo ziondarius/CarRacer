@@ -15,7 +15,6 @@ const state = {
     left: false,
     right: false,
   },
-  camera: null,
 };
 
 const CFG = {
@@ -26,26 +25,17 @@ const CFG = {
   steerReturn: 4.8,
   maxForward: 40,
   maxReverse: -18,
-  cameraHeight: 6,
-  cameraBack: 13,
-  cameraSide: 0.8,
+  cameraHeight: 5.8,
+  cameraBack: 11.5,
+  cameraPitch: 0.34,
   cameraNear: 0.1,
   cameraFocal: 700,
+  gridStep: 10,
+  gridRadius: 520,
 };
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-function angleDelta(from, to) {
-  let diff = to - from;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  return diff;
-}
-
-function lerpAngle(from, to, t) {
-  return from + angleDelta(from, to) * t;
 }
 
 function resize() {
@@ -126,23 +116,35 @@ function drawGround(cam) {
   ctx.fillStyle = ground;
   ctx.fillRect(0, horizonY, canvas.width, canvas.height - horizonY);
 
-  ctx.strokeStyle = "rgba(56, 116, 52, 0.35)";
-  ctx.lineWidth = 1;
+  const step = CFG.gridStep;
+  const radius = CFG.gridRadius;
+  const centerX = Math.round(state.carX / step) * step;
+  const centerZ = Math.round(state.carZ / step) * step;
+  const minX = centerX - radius;
+  const maxX = centerX + radius;
+  const minZ = centerZ - radius;
+  const maxZ = centerZ + radius;
 
-  for (let x = -120; x <= 120; x += 8) {
-    const p1 = project(x, 0.01, -30, cam);
-    const p2 = project(x, 0.01, 240, cam);
+  for (let x = minX; x <= maxX; x += step) {
+    const p1 = project(x, 0.01, minZ, cam);
+    const p2 = project(x, 0.01, maxZ, cam);
     if (!p1 || !p2) continue;
+    const major = Math.abs((Math.round(x) / step) % 5) === 0;
+    ctx.strokeStyle = major ? "rgba(49, 102, 44, 0.55)" : "rgba(56, 116, 52, 0.3)";
+    ctx.lineWidth = major ? 1.35 : 0.9;
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
   }
 
-  for (let z = -30; z <= 240; z += 8) {
-    const p1 = project(-120, 0.01, z, cam);
-    const p2 = project(120, 0.01, z, cam);
+  for (let z = minZ; z <= maxZ; z += step) {
+    const p1 = project(minX, 0.01, z, cam);
+    const p2 = project(maxX, 0.01, z, cam);
     if (!p1 || !p2) continue;
+    const major = Math.abs((Math.round(z) / step) % 5) === 0;
+    ctx.strokeStyle = major ? "rgba(49, 102, 44, 0.55)" : "rgba(56, 116, 52, 0.3)";
+    ctx.lineWidth = major ? 1.35 : 0.9;
     ctx.beginPath();
     ctx.moveTo(p1.x, p1.y);
     ctx.lineTo(p2.x, p2.y);
@@ -151,27 +153,43 @@ function drawGround(cam) {
 }
 
 function carVerts() {
-  const c = [
-    [-1.2, 0.35, -2.2],
-    [1.2, 0.35, -2.2],
-    [1.2, 0.35, 2.2],
-    [-1.2, 0.35, 2.2],
-    [-1.2, 1.25, -2.2],
-    [1.2, 1.25, -2.2],
-    [1.2, 1.25, 2.2],
-    [-1.2, 1.25, 2.2],
+  const body = [
+    [-1.25, 0.28, -2.6],
+    [1.25, 0.28, -2.6],
+    [1.25, 0.28, 2.55],
+    [-1.25, 0.28, 2.55],
+    [-1.2, 1.2, -2.45],
+    [1.2, 1.2, -2.45],
+    [1.2, 1.2, 2.35],
+    [-1.2, 1.2, 2.35],
   ];
-  const cab = [
-    [-0.82, 1.25, -0.8],
-    [0.82, 1.25, -0.8],
-    [0.82, 1.25, 1.1],
-    [-0.82, 1.25, 1.1],
-    [-0.82, 1.95, -0.8],
-    [0.82, 1.95, -0.8],
-    [0.82, 1.95, 1.1],
-    [-0.82, 1.95, 1.1],
+  const cabin = [
+    [-0.85, 1.15, -0.95],
+    [0.85, 1.15, -0.95],
+    [0.85, 1.15, 1.35],
+    [-0.85, 1.15, 1.35],
+    [-0.72, 1.92, -0.55],
+    [0.72, 1.92, -0.55],
+    [0.72, 1.92, 1.12],
+    [-0.72, 1.92, 1.12],
   ];
-  return { body: c, cabin: cab };
+  const hood = [
+    [-0.98, 1.2, 1.2],
+    [0.98, 1.2, 1.2],
+    [0.98, 1.2, 2.35],
+    [-0.98, 1.2, 2.35],
+    [-0.82, 1.42, 1.25],
+    [0.82, 1.42, 1.25],
+    [0.82, 1.32, 2.3],
+    [-0.82, 1.32, 2.3],
+  ];
+  const wheels = [
+    [-1.32, 0.23, -1.78],
+    [1.32, 0.23, -1.78],
+    [-1.32, 0.23, 1.78],
+    [1.32, 0.23, 1.78],
+  ];
+  return { body, cabin, hood, wheels };
 }
 
 function transformPoint(localX, localY, localZ) {
@@ -183,63 +201,106 @@ function transformPoint(localX, localY, localZ) {
 }
 
 function drawCar(cam) {
-  const { body, cabin } = carVerts();
-  const b = body.map((p) => transformPoint(p[0], p[1], p[2]));
-  const cb = cabin.map((p) => transformPoint(p[0], p[1], p[2]));
-  const pb = b.map((p) => {
-    const c = worldToCamera(p.x, p.y, p.z, cam);
-    if (c.z < CFG.cameraNear) return null;
-    return {
-      x: canvas.width * 0.5 + (c.x * CFG.cameraFocal) / c.z,
-      y: canvas.height * 0.5 - (c.y * CFG.cameraFocal) / c.z,
-      z: c.z,
-    };
-  });
-  const pc = cb.map((p) => {
-    const c = worldToCamera(p.x, p.y, p.z, cam);
-    if (c.z < CFG.cameraNear) return null;
-    return {
-      x: canvas.width * 0.5 + (c.x * CFG.cameraFocal) / c.z,
-      y: canvas.height * 0.5 - (c.y * CFG.cameraFocal) / c.z,
-      z: c.z,
-    };
-  });
+  const drawables = [];
+  const toScreen = (points) =>
+    points.map((p) => {
+      const c = worldToCamera(p.x, p.y, p.z, cam);
+      if (c.z < CFG.cameraNear) return null;
+      return {
+        x: canvas.width * 0.5 + (c.x * CFG.cameraFocal) / c.z,
+        y: canvas.height * 0.5 - (c.y * CFG.cameraFocal) / c.z,
+        z: c.z,
+      };
+    });
 
-  const faces = [
-    { idx: [0, 1, 2, 3], fill: "#f97316" },
-    { idx: [4, 5, 6, 7], fill: "#fb923c" },
-    { idx: [0, 1, 5, 4], fill: "#ea580c" },
-    { idx: [1, 2, 6, 5], fill: "#f97316" },
-    { idx: [2, 3, 7, 6], fill: "#fb923c" },
-    { idx: [3, 0, 4, 7], fill: "#f97316" },
-  ];
-
-  const cabinFaces = [
-    { idx: [0, 1, 2, 3], fill: "#e2e8f0" },
-    { idx: [4, 5, 6, 7], fill: "#f8fafc" },
-    { idx: [0, 1, 5, 4], fill: "#94a3b8" },
-    { idx: [1, 2, 6, 5], fill: "#cbd5e1" },
-    { idx: [2, 3, 7, 6], fill: "#e2e8f0" },
-    { idx: [3, 0, 4, 7], fill: "#cbd5e1" },
-  ];
-
-  const allFaces = [
-    ...faces.map((f) => ({ ...f, verts: pb, stroke: "#7c2d12" })),
-    ...cabinFaces.map((f) => ({ ...f, verts: pc, stroke: "#64748b" })),
-  ];
-
-  allFaces
-    .map((f) => {
-      const points = f.idx.map((i) => f.verts[i]);
-      if (points.some((p) => !p)) return null;
+  const addPolyBox = (verts, palette, stroke) => {
+    const worldVerts = verts.map((p) => transformPoint(p[0], p[1], p[2]));
+    const projected = toScreen(worldVerts);
+    const faces = [
+      { idx: [0, 1, 2, 3], fill: palette.bottom },
+      { idx: [4, 5, 6, 7], fill: palette.top },
+      { idx: [0, 1, 5, 4], fill: palette.back },
+      { idx: [1, 2, 6, 5], fill: palette.right },
+      { idx: [2, 3, 7, 6], fill: palette.front },
+      { idx: [3, 0, 4, 7], fill: palette.left },
+    ];
+    faces.forEach((f) => {
+      const points = f.idx.map((i) => projected[i]);
+      if (points.some((p) => !p)) return;
       const depth = points.reduce((sum, p) => sum + p.z, 0) / points.length;
-      return { points, fill: f.fill, stroke: f.stroke, depth };
-    })
-    .filter(Boolean)
+      drawables.push({ points, fill: f.fill, stroke, depth });
+    });
+  ];
+
+  const { body, cabin, hood, wheels } = carVerts();
+  addPolyBox(
+    body,
+    {
+      bottom: "#7c2d12",
+      top: "#fb923c",
+      back: "#b45309",
+      right: "#f97316",
+      front: "#fdba74",
+      left: "#f97316",
+    },
+    "#7c2d12"
+  );
+  addPolyBox(
+    hood,
+    {
+      bottom: "#9a3412",
+      top: "#fdba74",
+      back: "#c2410c",
+      right: "#fb923c",
+      front: "#ffedd5",
+      left: "#fb923c",
+    },
+    "#9a3412"
+  );
+  addPolyBox(
+    cabin,
+    {
+      bottom: "#64748b",
+      top: "#f8fafc",
+      back: "#94a3b8",
+      right: "#cbd5e1",
+      front: "#e2e8f0",
+      left: "#cbd5e1",
+    },
+    "#64748b"
+  );
+
+  const wheelBox = (cx, cy, cz) => [
+    [cx - 0.23, cy - 0.18, cz - 0.45],
+    [cx + 0.23, cy - 0.18, cz - 0.45],
+    [cx + 0.23, cy - 0.18, cz + 0.45],
+    [cx - 0.23, cy - 0.18, cz + 0.45],
+    [cx - 0.23, cy + 0.18, cz - 0.45],
+    [cx + 0.23, cy + 0.18, cz - 0.45],
+    [cx + 0.23, cy + 0.18, cz + 0.45],
+    [cx - 0.23, cy + 0.18, cz + 0.45],
+  ];
+
+  wheels.forEach(([x, y, z]) =>
+    addPolyBox(
+      wheelBox(x, y, z),
+      {
+        bottom: "#111827",
+        top: "#1f2937",
+        back: "#111827",
+        right: "#0f172a",
+        front: "#1f2937",
+        left: "#0f172a",
+      },
+      "#020617"
+    )
+  );
+
+  drawables
     .sort((a, b) => b.depth - a.depth)
     .forEach((f) => {
       drawPoly(f.points, f.fill, f.stroke);
-    });
+    })
 }
 
 function update(dt) {
@@ -263,51 +324,20 @@ function update(dt) {
     state.steer = Math.min(0, state.steer + CFG.steerReturn * dt);
   }
 
-  state.heading += state.steer * (state.speed / CFG.maxForward) * 2.4 * dt;
+  state.heading += state.steer * (state.speed / CFG.maxForward) * 1.9 * dt;
   state.carX += Math.sin(state.heading) * state.speed * dt;
   state.carZ += Math.cos(state.heading) * state.speed * dt;
 }
 
-function buildCameraTarget() {
+function buildCamera() {
   const yaw = state.heading;
-  const camX =
-    state.carX - Math.sin(yaw) * CFG.cameraBack + Math.cos(yaw) * CFG.cameraSide;
-  const camZ =
-    state.carZ - Math.cos(yaw) * CFG.cameraBack - Math.sin(yaw) * CFG.cameraSide;
-  const camY = CFG.cameraHeight;
-
-  const lookAhead = 3.6 + Math.max(0, state.speed) * 0.06;
-  const tx = state.carX + Math.sin(yaw) * lookAhead;
-  const ty = 1.2;
-  const tz = state.carZ + Math.cos(yaw) * lookAhead;
-
-  const dx = tx - camX;
-  const dy = ty - camY;
-  const dz = tz - camZ;
-
-  const camYaw = Math.atan2(dx, dz);
-  const horizontal = Math.sqrt(dx * dx + dz * dz);
-  const camPitch = -Math.atan2(dy, horizontal);
-
-  return { x: camX, y: camY, z: camZ, yaw: camYaw, pitch: camPitch };
-}
-
-function updateCamera(target, dt) {
-  if (!state.camera) {
-    state.camera = { ...target };
-    return state.camera;
-  }
-
-  const posT = 1 - Math.exp(-dt * 7.5);
-  const rotT = 1 - Math.exp(-dt * 10);
-
-  state.camera.x += (target.x - state.camera.x) * posT;
-  state.camera.y += (target.y - state.camera.y) * posT;
-  state.camera.z += (target.z - state.camera.z) * posT;
-  state.camera.yaw = lerpAngle(state.camera.yaw, target.yaw, rotT);
-  state.camera.pitch += (target.pitch - state.camera.pitch) * rotT;
-
-  return state.camera;
+  return {
+    x: state.carX - Math.sin(yaw) * CFG.cameraBack,
+    y: CFG.cameraHeight,
+    z: state.carZ - Math.cos(yaw) * CFG.cameraBack,
+    yaw,
+    pitch: CFG.cameraPitch,
+  };
 }
 
 let last = performance.now();
@@ -316,7 +346,7 @@ function loop(now) {
   last = now;
   update(dt);
 
-  const cam = updateCamera(buildCameraTarget(), dt);
+  const cam = buildCamera();
   drawGround(cam);
   drawCar(cam);
 
