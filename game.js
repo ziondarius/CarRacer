@@ -19,6 +19,7 @@ const LANE_COUNT = 3;
 const LANE_WIDTH = ROAD_WIDTH / LANE_COUNT;
 const PLAYER_W = 44;
 const PLAYER_H = 78;
+const PLAYER_Y = H / 2 - PLAYER_H / 2;
 
 const state = {
   running: false,
@@ -30,7 +31,7 @@ const state = {
   player: {
     lane: 1,
     x: 0,
-    y: H - PLAYER_H - 24,
+    y: PLAYER_Y,
   },
   enemies: [],
   keys: { left: false, right: false },
@@ -47,6 +48,7 @@ function laneCenter(lane) {
 function resetPlayer() {
   state.player.lane = 1;
   state.player.x = laneCenter(state.player.lane) - PLAYER_W / 2;
+  state.player.y = PLAYER_Y;
 }
 
 function startGame() {
@@ -58,6 +60,7 @@ function startGame() {
   state.enemies = [];
   resetPlayer();
   overlay.hidden = true;
+  overlay.classList.add("hidden");
 }
 
 function endGame() {
@@ -70,6 +73,7 @@ function endGame() {
     "You hit traffic.<br />Use Arrow Keys or A/D to steer, then try again.";
   startBtn.textContent = "Restart";
   overlay.hidden = false;
+  overlay.classList.remove("hidden");
 }
 
 function spawnEnemy() {
@@ -136,18 +140,18 @@ function isColliding(a, b) {
 }
 
 function drawRoad() {
-  ctx.fillStyle = "#0b1220";
+  ctx.fillStyle = "#dbeafe";
   ctx.fillRect(0, 0, ROAD_LEFT, H);
   ctx.fillRect(ROAD_LEFT + ROAD_WIDTH, 0, ROAD_LEFT, H);
 
-  ctx.fillStyle = "#1f2937";
+  ctx.fillStyle = "#9ca3af";
   ctx.fillRect(ROAD_LEFT, 0, ROAD_WIDTH, H);
 
-  ctx.fillStyle = "#f8fafc";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(ROAD_LEFT - 3, 0, 6, H);
   ctx.fillRect(ROAD_LEFT + ROAD_WIDTH - 3, 0, 6, H);
 
-  ctx.strokeStyle = "#cbd5e1";
+  ctx.strokeStyle = "#f8fafc";
   ctx.lineWidth = 4;
   ctx.setLineDash([28, 24]);
   for (let i = 1; i < LANE_COUNT; i += 1) {

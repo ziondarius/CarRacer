@@ -1,10 +1,10 @@
 :root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --road: #1f2937;
-  --lane: #94a3b8;
-  --text: #e2e8f0;
-  --accent: #f59e0b;
+  --bg: #dbeafe;
+  --panel: #f8fafc;
+  --road: #9ca3af;
+  --lane: #f8fafc;
+  --text: #0f172a;
+  --accent: #fbbf24;
   --danger: #ef4444;
 }
 
@@ -17,7 +17,7 @@ body {
   min-height: 100vh;
   font-family: "Trebuchet MS", "Segoe UI", sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at top, #1d4ed8 0%, var(--bg) 38%, #020617 100%);
+  background: radial-gradient(circle at top, #93c5fd 0%, #bfdbfe 42%, #e0f2fe 100%);
   display: grid;
   place-items: center;
 }
@@ -29,8 +29,8 @@ body {
 }
 
 .hud {
-  background: linear-gradient(145deg, #0f172a, var(--panel));
-  border: 1px solid #334155;
+  background: linear-gradient(145deg, #ffffff, var(--panel));
+  border: 1px solid #cbd5e1;
   border-radius: 12px;
   padding: 0.8rem 1rem;
 }
@@ -53,10 +53,10 @@ body {
 
 .game-shell {
   position: relative;
-  border: 2px solid #334155;
+  border: 2px solid #cbd5e1;
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 18px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.18);
 }
 
 canvas {
@@ -69,12 +69,16 @@ canvas {
 .overlay {
   position: absolute;
   inset: 0;
-  background: rgba(2, 6, 23, 0.86);
+  background: rgba(241, 245, 249, 0.84);
   display: grid;
   place-content: center;
   text-align: center;
   gap: 0.75rem;
   padding: 1rem;
+}
+
+.overlay.hidden {
+  display: none;
 }
 
 .overlay h2,
@@ -88,7 +92,7 @@ button {
   padding: 0.75rem 1rem;
   font: inherit;
   font-weight: 700;
-  color: #111827;
+  color: #1f2937;
   background: var(--accent);
   cursor: pointer;
   transition: transform 120ms ease, filter 120ms ease;
@@ -111,7 +115,7 @@ button:active {
 
 #left-btn,
 #right-btn {
-  background: #38bdf8;
+  background: #67e8f9;
 }
 
 @media (min-width: 700px) {
