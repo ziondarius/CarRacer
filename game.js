@@ -1,6 +1,9 @@
-import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
-
 const root = document.getElementById("scene-root");
+if (typeof THREE === "undefined") {
+  root.innerHTML =
+    '<p style="padding:16px;font:16px Trebuchet MS,sans-serif">Unable to load 3D engine. Check your internet connection and refresh.</p>';
+  throw new Error("THREE is not loaded");
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xbfe7ff);
