@@ -3,13 +3,22 @@ const ctx = canvas.getContext("2d");
 
 const scoreEl = document.getElementById("score");
 const bestEl = document.getElementById("best");
+const livesEl = document.getElementById("lives");
 const speedEl = document.getElementById("speed");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlay-title");
 const overlayText = document.getElementById("overlay-text");
 const startBtn = document.getElementById("start-btn");
+const configTabBtn = document.getElementById("config-tab");
+const configPanel = document.getElementById("config-panel");
+const livesInput = document.getElementById("lives-input");
+const livesValue = document.getElementById("lives-value");
+const speedInput = document.getElementById("speed-input");
+const speedValue = document.getElementById("speed-value");
 const leftBtn = document.getElementById("left-btn");
 const rightBtn = document.getElementById("right-btn");
+const upBtn = document.getElementById("up-btn");
+const downBtn = document.getElementById("down-btn");
 
 const W = canvas.width;
 const H = canvas.height;
@@ -20,24 +29,34 @@ const LANE_WIDTH = ROAD_WIDTH / LANE_COUNT;
 const PLAYER_W = 44;
 const PLAYER_H = 78;
 const PLAYER_Y = H / 2 - PLAYER_H / 2;
+const PLAYER_MIN_Y = 110;
+const PLAYER_MAX_Y = H - PLAYER_H - 28;
 
 const state = {
   running: false,
   score: 0,
   best: Number(localStorage.getItem("car-racer-best")) || 0,
   speed: 4.2,
+  settings: {
+    lives: 3,
+    baseSpeed: 4.2,
+  },
+  lives: 3,
   enemyTimer: 0,
   laneScroll: 0,
+  invulnFrames: 0,
   player: {
     lane: 1,
     x: 0,
     y: PLAYER_Y,
   },
   enemies: [],
-  keys: { left: false, right: false },
+  keys: { left: false, right: false, up: false, down: false },
 };
 
+syncConfigInputs();
 bestEl.textContent = state.best;
+livesEl.textContent = state.lives;
 resetPlayer();
 drawFrame();
 
@@ -54,11 +73,14 @@ function resetPlayer() {
 function startGame() {
   state.running = true;
   state.score = 0;
-  state.speed = 4.2;
+  state.speed = state.settings.baseSpeed;
+  state.lives = state.settings.lives;
   state.enemyTimer = 0;
   state.laneScroll = 0;
+  state.invulnFrames = 0;
   state.enemies = [];
   resetPlayer();
+  livesEl.textContent = state.lives;
   overlay.hidden = true;
   overlay.classList.add("hidden");
 }
@@ -70,10 +92,31 @@ function endGame() {
   bestEl.textContent = state.best;
   overlayTitle.textContent = "Crash!";
   overlayText.innerHTML =
-    "You hit traffic.<br />Use Arrow Keys or A/D to steer, then try again.";
+    "Out of lives.<br />Use Arrow Keys / A-D and W-S, then try again.";
   startBtn.textContent = "Restart";
   overlay.hidden = false;
   overlay.classList.remove("hidden");
+}
+
+function syncConfigInputs() {
+  livesInput.value = String(state.settings.lives);
+  speedInput.value = String(state.settings.baseSpeed);
+  livesValue.textContent = String(state.settings.lives);
+  speedValue.textContent = state.settings.baseSpeed.toFixed(1);
+}
+
+function handleCollision(enemyIndex) {
+  if (state.invulnFrames > 0) return;
+
+  state.lives -= 1;
+  livesEl.textContent = state.lives;
+  state.enemies.splice(enemyIndex, 1);
+  state.invulnFrames = 70;
+  resetPlayer();
+
+  if (state.lives <= 0) {
+    endGame();
+  }
 }
 
 function spawnEnemy() {
@@ -109,11 +152,21 @@ function update() {
 
   const targetX = laneCenter(state.player.lane) - PLAYER_W / 2;
   state.player.x += (targetX - state.player.x) * 0.28;
+  if (state.keys.up) {
+    state.player.y -= 4.4;
+  }
+  if (state.keys.down) {
+    state.player.y += 4.4;
+  }
+  state.player.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, state.player.y));
 
   state.score += 0.06 * state.speed;
-  state.speed = Math.min(12, 4.2 + state.score / 160);
+  state.speed = Math.min(13, state.settings.baseSpeed + state.score / 180);
   state.enemyTimer += 1;
   state.laneScroll = (state.laneScroll + state.speed) % 80;
+  if (state.invulnFrames > 0) {
+    state.invulnFrames -= 1;
+  }
 
   const spawnRate = Math.max(14, 42 - state.speed * 2);
   if (state.enemyTimer >= spawnRate) {
@@ -127,9 +180,9 @@ function update() {
 
   state.enemies = state.enemies.filter((enemy) => enemy.y < H + enemy.h);
 
-  for (const enemy of state.enemies) {
-    if (isColliding(state.player, enemy)) {
-      endGame();
+  for (let i = 0; i < state.enemies.length; i += 1) {
+    if (isColliding(state.player, state.enemies[i])) {
+      handleCollision(i);
       break;
     }
   }
@@ -190,10 +243,12 @@ function drawFrame() {
     drawCar(enemy.x, enemy.y, enemy.w, enemy.h, enemy.color);
   }
 
-  drawCar(state.player.x, state.player.y, PLAYER_W, PLAYER_H, "#f59e0b");
+  if (state.invulnFrames === 0 || Math.floor(state.invulnFrames / 5) % 2 === 0) {
+    drawCar(state.player.x, state.player.y, PLAYER_W, PLAYER_H, "#f59e0b");
+  }
 
   scoreEl.textContent = Math.floor(state.score);
-  speedEl.textContent = `${(state.speed / 4.2).toFixed(1)}x`;
+  speedEl.textContent = `${state.speed.toFixed(1)}`;
 }
 
 function loop() {
@@ -209,9 +264,51 @@ function onKeyDown(event) {
   if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") {
     state.keys.right = true;
   }
+  if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
+    state.keys.up = true;
+  }
+  if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
+    state.keys.down = true;
+  }
+}
+
+function onKeyUp(event) {
+  if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
+    state.keys.up = false;
+  }
+  if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
+    state.keys.down = false;
+  }
 }
 
 document.addEventListener("keydown", onKeyDown);
+document.addEventListener("keyup", onKeyUp);
+
+configTabBtn.addEventListener("click", () => {
+  const willOpen = configPanel.hidden;
+  configPanel.hidden = !willOpen;
+  configTabBtn.setAttribute("aria-expanded", String(willOpen));
+});
+
+livesInput.addEventListener("input", () => {
+  state.settings.lives = Number(livesInput.value);
+  livesValue.textContent = String(state.settings.lives);
+  if (!state.running) {
+    state.lives = state.settings.lives;
+    livesEl.textContent = state.lives;
+  }
+});
+
+speedInput.addEventListener("input", () => {
+  state.settings.baseSpeed = Number(speedInput.value);
+  speedValue.textContent = state.settings.baseSpeed.toFixed(1);
+  if (state.running) {
+    state.speed = Math.max(state.speed, state.settings.baseSpeed);
+  } else {
+    speedEl.textContent = state.settings.baseSpeed.toFixed(1);
+  }
+});
+
 startBtn.addEventListener("click", () => {
   startBtn.textContent = "Restart";
   overlayTitle.textContent = "Car Racer";
@@ -225,6 +322,26 @@ leftBtn.addEventListener("click", () => {
 
 rightBtn.addEventListener("click", () => {
   state.keys.right = true;
+});
+
+upBtn.addEventListener("pointerdown", () => {
+  state.keys.up = true;
+});
+upBtn.addEventListener("pointerup", () => {
+  state.keys.up = false;
+});
+upBtn.addEventListener("pointerleave", () => {
+  state.keys.up = false;
+});
+
+downBtn.addEventListener("pointerdown", () => {
+  state.keys.down = true;
+});
+downBtn.addEventListener("pointerup", () => {
+  state.keys.down = false;
+});
+downBtn.addEventListener("pointerleave", () => {
+  state.keys.down = false;
 });
 
 loop();

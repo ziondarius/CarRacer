@@ -9,12 +9,25 @@
   <body>
     <main class="app">
       <header class="hud">
-        <h1>Car Racer</h1>
+        <div class="hud-top">
+          <h1>Car Racer</h1>
+          <button id="config-tab" class="tab-btn" type="button" aria-expanded="false">
+            Configuration
+          </button>
+        </div>
         <div class="stats">
           <p>Score: <span id="score">0</span></p>
           <p>Best: <span id="best">0</span></p>
+          <p>Lives: <span id="lives">3</span></p>
           <p>Speed: <span id="speed">1.0x</span></p>
         </div>
+        <section id="config-panel" class="config-panel" hidden>
+          <label for="lives-input">Lives: <span id="lives-value">3</span></label>
+          <input id="lives-input" type="range" min="1" max="9" step="1" value="3" />
+
+          <label for="speed-input">Base Speed: <span id="speed-value">4.2</span></label>
+          <input id="speed-input" type="range" min="2.5" max="9" step="0.1" value="4.2" />
+        </section>
       </header>
 
       <section class="game-shell">
@@ -22,7 +35,7 @@
         <div id="overlay" class="overlay">
           <h2 id="overlay-title">Press Start</h2>
           <p id="overlay-text">
-            Move with Arrow Keys or A/D.
+            Move with Arrow Keys or A/D and W/S.
             <br />
             Avoid traffic and survive as long as possible.
           </p>
@@ -32,6 +45,8 @@
 
       <section class="touch-controls" aria-label="Touch controls">
         <button id="left-btn" type="button">Left</button>
+        <button id="up-btn" type="button">Forward</button>
+        <button id="down-btn" type="button">Backward</button>
         <button id="right-btn" type="button">Right</button>
       </section>
     </main>
