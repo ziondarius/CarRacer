@@ -1,6 +1,6 @@
 # 3D Car Plane
 
-A lightweight browser-based 3D driving demo built with `three.js`.
+A lightweight browser-based 3D-style driving demo built with plain HTML5 Canvas and JavaScript (no external dependencies).
 
 ## How to run
 
