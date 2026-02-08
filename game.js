@@ -1,347 +1,182 @@
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+import * as THREE from "https://unpkg.com/three@0.161.0/build/three.module.js";
 
-const scoreEl = document.getElementById("score");
-const bestEl = document.getElementById("best");
-const livesEl = document.getElementById("lives");
-const speedEl = document.getElementById("speed");
-const overlay = document.getElementById("overlay");
-const overlayTitle = document.getElementById("overlay-title");
-const overlayText = document.getElementById("overlay-text");
-const startBtn = document.getElementById("start-btn");
-const configTabBtn = document.getElementById("config-tab");
-const configPanel = document.getElementById("config-panel");
-const livesInput = document.getElementById("lives-input");
-const livesValue = document.getElementById("lives-value");
-const speedInput = document.getElementById("speed-input");
-const speedValue = document.getElementById("speed-value");
-const leftBtn = document.getElementById("left-btn");
-const rightBtn = document.getElementById("right-btn");
-const upBtn = document.getElementById("up-btn");
-const downBtn = document.getElementById("down-btn");
+const root = document.getElementById("scene-root");
 
-const W = canvas.width;
-const H = canvas.height;
-const ROAD_LEFT = 62;
-const ROAD_WIDTH = W - ROAD_LEFT * 2;
-const LANE_COUNT = 3;
-const LANE_WIDTH = ROAD_WIDTH / LANE_COUNT;
-const PLAYER_W = 44;
-const PLAYER_H = 78;
-const PLAYER_Y = H / 2 - PLAYER_H / 2;
-const PLAYER_MIN_Y = 110;
-const PLAYER_MAX_Y = H - PLAYER_H - 28;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfe7ff);
+scene.fog = new THREE.Fog(0xbfe7ff, 70, 220);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 6.5, -12);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+root.appendChild(renderer.domElement);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x88aa77, 1.15);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xffffff, 0.95);
+sun.position.set(24, 35, -14);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(400, 400),
+  new THREE.MeshStandardMaterial({ color: 0xb3e59f, roughness: 0.95, metalness: 0.02 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const grid = new THREE.GridHelper(400, 120, 0x5f8f52, 0x87b778);
+grid.position.y = 0.01;
+scene.add(grid);
+
+const car = new THREE.Group();
+scene.add(car);
+
+const body = new THREE.Mesh(
+  new THREE.BoxGeometry(2.2, 0.75, 4.3),
+  new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.45, metalness: 0.2 })
+);
+body.position.y = 1.05;
+body.castShadow = true;
+car.add(body);
+
+const cabin = new THREE.Mesh(
+  new THREE.BoxGeometry(1.55, 0.72, 2),
+  new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.5 })
+);
+cabin.position.set(0, 1.7, -0.1);
+cabin.castShadow = true;
+car.add(cabin);
+
+const wheelGeometry = new THREE.CylinderGeometry(0.42, 0.42, 0.42, 24);
+const wheelMaterial = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.85 });
+const wheelOffsets = [
+  [-1.15, 0.45, 1.38],
+  [1.15, 0.45, 1.38],
+  [-1.15, 0.45, -1.38],
+  [1.15, 0.45, -1.38],
+];
+
+const wheels = wheelOffsets.map(([x, y, z]) => {
+  const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+  wheel.rotation.z = Math.PI / 2;
+  wheel.position.set(x, y, z);
+  wheel.castShadow = true;
+  car.add(wheel);
+  return wheel;
+});
+
+car.position.set(0, 0, 0);
 
 const state = {
-  running: false,
-  score: 0,
-  best: Number(localStorage.getItem("car-racer-best")) || 0,
-  speed: 4.2,
-  settings: {
-    lives: 3,
-    baseSpeed: 4.2,
+  speed: 0,
+  heading: 0,
+  steering: 0,
+  keys: {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
   },
-  lives: 3,
-  enemyTimer: 0,
-  laneScroll: 0,
-  invulnFrames: 0,
-  player: {
-    lane: 1,
-    x: 0,
-    y: PLAYER_Y,
-  },
-  enemies: [],
-  keys: { left: false, right: false, up: false, down: false },
 };
 
-syncConfigInputs();
-bestEl.textContent = state.best;
-livesEl.textContent = state.lives;
-resetPlayer();
-drawFrame();
+const MAX_FWD_SPEED = 28;
+const MAX_REV_SPEED = -14;
+const ACCEL = 28;
+const BRAKE = 38;
+const COAST = 9;
+const TURN_RATE = 1.85;
+const STEER_RETURN = 4.2;
+const WHEEL_SPIN_SCALE = 1.9;
 
-function laneCenter(lane) {
-  return ROAD_LEFT + lane * LANE_WIDTH + LANE_WIDTH / 2;
+const cameraOffset = new THREE.Vector3(0, 6, -12);
+const cameraLookTarget = new THREE.Vector3();
+const cameraDesired = new THREE.Vector3();
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
-function resetPlayer() {
-  state.player.lane = 1;
-  state.player.x = laneCenter(state.player.lane) - PLAYER_W / 2;
-  state.player.y = PLAYER_Y;
+function onKeyChange(event, isDown) {
+  const key = event.key.toLowerCase();
+
+  if (key === "arrowup" || key === "w") state.keys.forward = isDown;
+  if (key === "arrowdown" || key === "s") state.keys.backward = isDown;
+  if (key === "arrowleft" || key === "a") state.keys.left = isDown;
+  if (key === "arrowright" || key === "d") state.keys.right = isDown;
 }
 
-function startGame() {
-  state.running = true;
-  state.score = 0;
-  state.speed = state.settings.baseSpeed;
-  state.lives = state.settings.lives;
-  state.enemyTimer = 0;
-  state.laneScroll = 0;
-  state.invulnFrames = 0;
-  state.enemies = [];
-  resetPlayer();
-  livesEl.textContent = state.lives;
-  overlay.hidden = true;
-  overlay.classList.add("hidden");
-}
+window.addEventListener("keydown", (event) => onKeyChange(event, true));
+window.addEventListener("keyup", (event) => onKeyChange(event, false));
 
-function endGame() {
-  state.running = false;
-  state.best = Math.max(state.best, Math.floor(state.score));
-  localStorage.setItem("car-racer-best", String(state.best));
-  bestEl.textContent = state.best;
-  overlayTitle.textContent = "Crash!";
-  overlayText.innerHTML =
-    "Out of lives.<br />Use Arrow Keys / A-D and W-S, then try again.";
-  startBtn.textContent = "Restart";
-  overlay.hidden = false;
-  overlay.classList.remove("hidden");
-}
-
-function syncConfigInputs() {
-  livesInput.value = String(state.settings.lives);
-  speedInput.value = String(state.settings.baseSpeed);
-  livesValue.textContent = String(state.settings.lives);
-  speedValue.textContent = state.settings.baseSpeed.toFixed(1);
-}
-
-function handleCollision(enemyIndex) {
-  if (state.invulnFrames > 0) return;
-
-  state.lives -= 1;
-  livesEl.textContent = state.lives;
-  state.enemies.splice(enemyIndex, 1);
-  state.invulnFrames = 70;
-  resetPlayer();
-
-  if (state.lives <= 0) {
-    endGame();
-  }
-}
-
-function spawnEnemy() {
-  const lane = Math.floor(Math.random() * LANE_COUNT);
-  const width = 42;
-  const height = 76;
-  const x = laneCenter(lane) - width / 2;
-  state.enemies.push({
-    lane,
-    x,
-    y: -height - 10,
-    w: width,
-    h: height,
-    color: randomColor(),
-  });
-}
-
-function randomColor() {
-  const palette = ["#ef4444", "#22c55e", "#a855f7", "#0ea5e9", "#f97316"];
-  return palette[Math.floor(Math.random() * palette.length)];
-}
-
-function update() {
-  if (!state.running) return;
-
-  if (state.keys.left && state.player.lane > 0) {
-    state.player.lane -= 1;
-    state.keys.left = false;
-  } else if (state.keys.right && state.player.lane < LANE_COUNT - 1) {
-    state.player.lane += 1;
-    state.keys.right = false;
-  }
-
-  const targetX = laneCenter(state.player.lane) - PLAYER_W / 2;
-  state.player.x += (targetX - state.player.x) * 0.28;
-  if (state.keys.up) {
-    state.player.y -= 4.4;
-  }
-  if (state.keys.down) {
-    state.player.y += 4.4;
-  }
-  state.player.y = Math.max(PLAYER_MIN_Y, Math.min(PLAYER_MAX_Y, state.player.y));
-
-  state.score += 0.06 * state.speed;
-  state.speed = Math.min(13, state.settings.baseSpeed + state.score / 180);
-  state.enemyTimer += 1;
-  state.laneScroll = (state.laneScroll + state.speed) % 80;
-  if (state.invulnFrames > 0) {
-    state.invulnFrames -= 1;
-  }
-
-  const spawnRate = Math.max(14, 42 - state.speed * 2);
-  if (state.enemyTimer >= spawnRate) {
-    state.enemyTimer = 0;
-    spawnEnemy();
-  }
-
-  for (const enemy of state.enemies) {
-    enemy.y += state.speed + 1.8;
-  }
-
-  state.enemies = state.enemies.filter((enemy) => enemy.y < H + enemy.h);
-
-  for (let i = 0; i < state.enemies.length; i += 1) {
-    if (isColliding(state.player, state.enemies[i])) {
-      handleCollision(i);
-      break;
-    }
-  }
-}
-
-function isColliding(a, b) {
-  return a.x < b.x + b.w && a.x + PLAYER_W > b.x && a.y < b.y + b.h && a.y + PLAYER_H > b.y;
-}
-
-function drawRoad() {
-  ctx.fillStyle = "#dbeafe";
-  ctx.fillRect(0, 0, ROAD_LEFT, H);
-  ctx.fillRect(ROAD_LEFT + ROAD_WIDTH, 0, ROAD_LEFT, H);
-
-  ctx.fillStyle = "#9ca3af";
-  ctx.fillRect(ROAD_LEFT, 0, ROAD_WIDTH, H);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(ROAD_LEFT - 3, 0, 6, H);
-  ctx.fillRect(ROAD_LEFT + ROAD_WIDTH - 3, 0, 6, H);
-
-  ctx.strokeStyle = "#f8fafc";
-  ctx.lineWidth = 4;
-  ctx.setLineDash([28, 24]);
-  for (let i = 1; i < LANE_COUNT; i += 1) {
-    const x = ROAD_LEFT + i * LANE_WIDTH;
-    ctx.beginPath();
-    ctx.moveTo(x, -80 + state.laneScroll);
-    ctx.lineTo(x, H + 80);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-}
-
-function drawCar(x, y, w, h, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
-
-  ctx.fillStyle = "#111827";
-  ctx.fillRect(x + 6, y + 8, w - 12, h - 18);
-
-  ctx.fillStyle = "#94a3b8";
-  ctx.fillRect(x + 10, y + 12, w - 20, 18);
-  ctx.fillRect(x + 10, y + h - 28, w - 20, 14);
-
-  ctx.fillStyle = "#0f172a";
-  ctx.fillRect(x - 3, y + 12, 6, 14);
-  ctx.fillRect(x + w - 3, y + 12, 6, 14);
-  ctx.fillRect(x - 3, y + h - 24, 6, 14);
-  ctx.fillRect(x + w - 3, y + h - 24, 6, 14);
-}
-
-function drawFrame() {
-  ctx.clearRect(0, 0, W, H);
-  drawRoad();
-
-  for (const enemy of state.enemies) {
-    drawCar(enemy.x, enemy.y, enemy.w, enemy.h, enemy.color);
-  }
-
-  if (state.invulnFrames === 0 || Math.floor(state.invulnFrames / 5) % 2 === 0) {
-    drawCar(state.player.x, state.player.y, PLAYER_W, PLAYER_H, "#f59e0b");
-  }
-
-  scoreEl.textContent = Math.floor(state.score);
-  speedEl.textContent = `${state.speed.toFixed(1)}`;
-}
-
-function loop() {
-  update();
-  drawFrame();
-  requestAnimationFrame(loop);
-}
-
-function onKeyDown(event) {
-  if (event.key === "ArrowLeft" || event.key === "a" || event.key === "A") {
-    state.keys.left = true;
-  }
-  if (event.key === "ArrowRight" || event.key === "d" || event.key === "D") {
-    state.keys.right = true;
-  }
-  if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
-    state.keys.up = true;
-  }
-  if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
-    state.keys.down = true;
-  }
-}
-
-function onKeyUp(event) {
-  if (event.key === "ArrowUp" || event.key === "w" || event.key === "W") {
-    state.keys.up = false;
-  }
-  if (event.key === "ArrowDown" || event.key === "s" || event.key === "S") {
-    state.keys.down = false;
-  }
-}
-
-document.addEventListener("keydown", onKeyDown);
-document.addEventListener("keyup", onKeyUp);
-
-configTabBtn.addEventListener("click", () => {
-  const willOpen = configPanel.hidden;
-  configPanel.hidden = !willOpen;
-  configTabBtn.setAttribute("aria-expanded", String(willOpen));
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-livesInput.addEventListener("input", () => {
-  state.settings.lives = Number(livesInput.value);
-  livesValue.textContent = String(state.settings.lives);
-  if (!state.running) {
-    state.lives = state.settings.lives;
-    livesEl.textContent = state.lives;
+const clock = new THREE.Clock();
+
+function updateCar(dt) {
+  if (state.keys.forward) {
+    state.speed += ACCEL * dt;
+  } else if (state.keys.backward) {
+    state.speed -= BRAKE * dt;
+  } else if (state.speed > 0) {
+    state.speed = Math.max(0, state.speed - COAST * dt);
+  } else if (state.speed < 0) {
+    state.speed = Math.min(0, state.speed + COAST * dt);
   }
-});
+  state.speed = clamp(state.speed, MAX_REV_SPEED, MAX_FWD_SPEED);
 
-speedInput.addEventListener("input", () => {
-  state.settings.baseSpeed = Number(speedInput.value);
-  speedValue.textContent = state.settings.baseSpeed.toFixed(1);
-  if (state.running) {
-    state.speed = Math.max(state.speed, state.settings.baseSpeed);
-  } else {
-    speedEl.textContent = state.settings.baseSpeed.toFixed(1);
+  const steerInput = (state.keys.left ? 1 : 0) - (state.keys.right ? 1 : 0);
+  if (steerInput !== 0) {
+    state.steering += steerInput * TURN_RATE * dt;
+    state.steering = clamp(state.steering, -0.6, 0.6);
+  } else if (state.steering > 0) {
+    state.steering = Math.max(0, state.steering - STEER_RETURN * dt);
+  } else if (state.steering < 0) {
+    state.steering = Math.min(0, state.steering + STEER_RETURN * dt);
   }
-});
 
-startBtn.addEventListener("click", () => {
-  startBtn.textContent = "Restart";
-  overlayTitle.textContent = "Car Racer";
-  overlayText.innerHTML = "Avoid traffic and keep your run alive.";
-  startGame();
-});
+  const speedFactor = state.speed / MAX_FWD_SPEED;
+  state.heading += state.steering * speedFactor * 2.1 * dt;
+  car.rotation.y = state.heading;
 
-leftBtn.addEventListener("click", () => {
-  state.keys.left = true;
-});
+  car.position.x += Math.sin(state.heading) * state.speed * dt;
+  car.position.z += Math.cos(state.heading) * state.speed * dt;
 
-rightBtn.addEventListener("click", () => {
-  state.keys.right = true;
-});
+  for (const wheel of wheels) {
+    wheel.rotation.x += state.speed * dt * WHEEL_SPIN_SCALE;
+  }
 
-upBtn.addEventListener("pointerdown", () => {
-  state.keys.up = true;
-});
-upBtn.addEventListener("pointerup", () => {
-  state.keys.up = false;
-});
-upBtn.addEventListener("pointerleave", () => {
-  state.keys.up = false;
-});
+  wheels[0].rotation.y = state.steering;
+  wheels[1].rotation.y = state.steering;
+}
 
-downBtn.addEventListener("pointerdown", () => {
-  state.keys.down = true;
-});
-downBtn.addEventListener("pointerup", () => {
-  state.keys.down = false;
-});
-downBtn.addEventListener("pointerleave", () => {
-  state.keys.down = false;
-});
+function updateCamera() {
+  const rotatedOffset = cameraOffset.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), state.heading);
+  cameraDesired.copy(car.position).add(rotatedOffset);
+  camera.position.lerp(cameraDesired, 0.09);
 
-loop();
+  cameraLookTarget.copy(car.position);
+  cameraLookTarget.y += 1.2;
+  camera.lookAt(cameraLookTarget);
+}
+
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.033);
+  updateCar(dt);
+  updateCamera();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+animate();
