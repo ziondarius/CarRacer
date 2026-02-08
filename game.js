@@ -15,6 +15,7 @@ const state = {
     left: false,
     right: false,
   },
+  camera: null,
 };
 
 const CFG = {
@@ -27,12 +28,24 @@ const CFG = {
   maxReverse: -18,
   cameraHeight: 6,
   cameraBack: 13,
+  cameraSide: 0.8,
   cameraNear: 0.1,
   cameraFocal: 700,
 };
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function angleDelta(from, to) {
+  let diff = to - from;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return diff;
+}
+
+function lerpAngle(from, to, t) {
+  return from + angleDelta(from, to) * t;
 }
 
 function resize() {
@@ -173,8 +186,24 @@ function drawCar(cam) {
   const { body, cabin } = carVerts();
   const b = body.map((p) => transformPoint(p[0], p[1], p[2]));
   const cb = cabin.map((p) => transformPoint(p[0], p[1], p[2]));
-  const pb = b.map((p) => project(p.x, p.y, p.z, cam));
-  const pc = cb.map((p) => project(p.x, p.y, p.z, cam));
+  const pb = b.map((p) => {
+    const c = worldToCamera(p.x, p.y, p.z, cam);
+    if (c.z < CFG.cameraNear) return null;
+    return {
+      x: canvas.width * 0.5 + (c.x * CFG.cameraFocal) / c.z,
+      y: canvas.height * 0.5 - (c.y * CFG.cameraFocal) / c.z,
+      z: c.z,
+    };
+  });
+  const pc = cb.map((p) => {
+    const c = worldToCamera(p.x, p.y, p.z, cam);
+    if (c.z < CFG.cameraNear) return null;
+    return {
+      x: canvas.width * 0.5 + (c.x * CFG.cameraFocal) / c.z,
+      y: canvas.height * 0.5 - (c.y * CFG.cameraFocal) / c.z,
+      z: c.z,
+    };
+  });
 
   const faces = [
     { idx: [0, 1, 2, 3], fill: "#f97316" },
@@ -185,10 +214,6 @@ function drawCar(cam) {
     { idx: [3, 0, 4, 7], fill: "#f97316" },
   ];
 
-  for (const f of faces) {
-    drawPoly(f.idx.map((i) => pb[i]), f.fill, "#7c2d12");
-  }
-
   const cabinFaces = [
     { idx: [0, 1, 2, 3], fill: "#e2e8f0" },
     { idx: [4, 5, 6, 7], fill: "#f8fafc" },
@@ -198,9 +223,23 @@ function drawCar(cam) {
     { idx: [3, 0, 4, 7], fill: "#cbd5e1" },
   ];
 
-  for (const f of cabinFaces) {
-    drawPoly(f.idx.map((i) => pc[i]), f.fill, "#64748b");
-  }
+  const allFaces = [
+    ...faces.map((f) => ({ ...f, verts: pb, stroke: "#7c2d12" })),
+    ...cabinFaces.map((f) => ({ ...f, verts: pc, stroke: "#64748b" })),
+  ];
+
+  allFaces
+    .map((f) => {
+      const points = f.idx.map((i) => f.verts[i]);
+      if (points.some((p) => !p)) return null;
+      const depth = points.reduce((sum, p) => sum + p.z, 0) / points.length;
+      return { points, fill: f.fill, stroke: f.stroke, depth };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.depth - a.depth)
+    .forEach((f) => {
+      drawPoly(f.points, f.fill, f.stroke);
+    });
 }
 
 function update(dt) {
@@ -229,15 +268,18 @@ function update(dt) {
   state.carZ += Math.cos(state.heading) * state.speed * dt;
 }
 
-function buildCamera() {
+function buildCameraTarget() {
   const yaw = state.heading;
-  const camX = state.carX - Math.sin(yaw) * CFG.cameraBack;
-  const camZ = state.carZ - Math.cos(yaw) * CFG.cameraBack;
+  const camX =
+    state.carX - Math.sin(yaw) * CFG.cameraBack + Math.cos(yaw) * CFG.cameraSide;
+  const camZ =
+    state.carZ - Math.cos(yaw) * CFG.cameraBack - Math.sin(yaw) * CFG.cameraSide;
   const camY = CFG.cameraHeight;
 
-  const tx = state.carX;
+  const lookAhead = 3.6 + Math.max(0, state.speed) * 0.06;
+  const tx = state.carX + Math.sin(yaw) * lookAhead;
   const ty = 1.2;
-  const tz = state.carZ + 2.5;
+  const tz = state.carZ + Math.cos(yaw) * lookAhead;
 
   const dx = tx - camX;
   const dy = ty - camY;
@@ -250,13 +292,31 @@ function buildCamera() {
   return { x: camX, y: camY, z: camZ, yaw: camYaw, pitch: camPitch };
 }
 
+function updateCamera(target, dt) {
+  if (!state.camera) {
+    state.camera = { ...target };
+    return state.camera;
+  }
+
+  const posT = 1 - Math.exp(-dt * 7.5);
+  const rotT = 1 - Math.exp(-dt * 10);
+
+  state.camera.x += (target.x - state.camera.x) * posT;
+  state.camera.y += (target.y - state.camera.y) * posT;
+  state.camera.z += (target.z - state.camera.z) * posT;
+  state.camera.yaw = lerpAngle(state.camera.yaw, target.yaw, rotT);
+  state.camera.pitch += (target.pitch - state.camera.pitch) * rotT;
+
+  return state.camera;
+}
+
 let last = performance.now();
 function loop(now) {
   const dt = Math.min((now - last) / 1000, 0.033);
   last = now;
   update(dt);
 
-  const cam = buildCamera();
+  const cam = updateCamera(buildCameraTarget(), dt);
   drawGround(cam);
   drawCar(cam);
 
